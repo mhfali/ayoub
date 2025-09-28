@@ -1,0 +1,144 @@
+# RAGFlow without Search & Agent Features
+FROM ubuntu:22.04 AS base
+USER root
+SHELL ["/bin/bash", "-c"]
+
+ARG NEED_MIRROR=0
+ARG LIGHTEN=1
+ENV LIGHTEN=${LIGHTEN}
+
+WORKDIR /ragflow
+
+# Copy models downloaded via download_deps.py (essential ones only)
+RUN mkdir -p /ragflow/rag/res/deepdoc /root/.ragflow
+RUN --mount=type=bind,from=infiniflow/ragflow_deps:latest,source=/huggingface.co,target=/huggingface.co \
+    cp /huggingface.co/InfiniFlow/huqie/huqie.txt.trie /ragflow/rag/res/ && \
+    tar --exclude='.*' -cf - \
+        /huggingface.co/InfiniFlow/text_concat_xgb_v1.0 \
+        /huggingface.co/InfiniFlow/deepdoc \
+        | tar -xf - --strip-components=3 -C /ragflow/rag/res/deepdoc 
+
+# Copy TIKA server for document processing
+RUN --mount=type=bind,from=infiniflow/ragflow_deps:latest,source=/,target=/deps \
+    cp -r /deps/nltk_data /root/ && \
+    cp /deps/tika-server-standard-3.0.0.jar /deps/tika-server-standard-3.0.0.jar.md5 /ragflow/ && \
+    cp /deps/cl100k_base.tiktoken /ragflow/9b5ad71b2ce5302211f9c61530b329a4922fc6a4
+
+ENV TIKA_SERVER_JAR="file:///ragflow/tika-server-standard-3.0.0.jar"
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install essential system packages only
+RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
+    if [ "$NEED_MIRROR" == "1" ]; then \
+        sed -i 's|http://ports.ubuntu.com|http://mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list; \
+        sed -i 's|http://archive.ubuntu.com|http://mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list; \
+    fi; \
+    apt-get update && apt-get install -y \
+        ca-certificates \
+        curl \
+        git \
+        python3.10 \
+        python3.10-dev \
+        python3.10-venv \
+        python3-pip \
+        pkg-config \
+        libicu-dev \
+        default-jdk \
+        nginx \
+        libglib2.0-0 \
+        libgl1 \
+        unzip \
+        && rm -rf /var/lib/apt/lists/*
+
+# Install uv for faster Python package management
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.cargo/bin:$PATH"
+
+# builder stage
+FROM base AS builder
+USER root
+
+WORKDIR /ragflow
+
+# Install only essential dependencies for RAG, chatbot, knowledge base, and embedding
+RUN --mount=type=cache,id=ragflow_pip,target=/root/.cache/pip,sharing=locked \
+    python3.10 -m venv /ragflow/.venv && \
+    . /ragflow/.venv/bin/activate && \
+    pip install --upgrade pip && \
+    # Core web framework
+    pip install flask==3.0.3 flask-cors==5.0.0 flask-login==0.6.3 flask-session==0.8.0 && \
+    # Database and storage
+    pip install elasticsearch==8.12.1 redis mysql-connector-python && \
+    # Essential utilities
+    pip install langdetect==1.0.9 requests python-dotenv pyjwt bcrypt && \
+    # Document processing (core RAG functionality)
+    pip install pandas numpy pdfplumber python-docx openpyxl Pillow && \
+    pip install beautifulsoup4 lxml chardet tiktoken && \
+    # LLM and embedding essentials
+    pip install openai anthropic cohere && \
+    pip install sentence-transformers && \
+    pip install torch --index-url https://download.pytorch.org/whl/cpu && \
+    pip install transformers && \
+    # Essential NLP packages only
+    pip install nltk
+
+# Copy only essential components for RAG/chatbot (exclude agent and search modules)
+COPY api api
+COPY rag rag  
+COPY deepdoc deepdoc
+COPY conf conf
+COPY web web
+
+# Remove agent and search specific modules after copying
+RUN rm -rf /ragflow/api/apps/canvas_app.py* || true && \
+    rm -rf /ragflow/api/apps/search_app.py* || true && \
+    rm -rf /ragflow/agent* || true && \
+    rm -rf /ragflow/agentic_reasoning* || true && \
+    # Remove heavy ML models and unnecessary parsers
+    find /ragflow/rag -name "*agent*" -type f -delete || true && \
+    find /ragflow/rag -name "*search*" -type f -delete || true && \
+    # Keep only essential document parsers
+    find /ragflow/deepdoc -name "*agent*" -type f -delete || true
+
+# Build web frontend
+RUN --mount=type=cache,id=ragflow_npm,target=/root/.npm,sharing=locked \
+    cd web && npm install && npm run build
+
+# Copy .git for version info
+COPY .git /ragflow/.git
+
+RUN version_info=$(git describe --tags --match=v* --first-parent --always); \
+    version_info="$version_info no-search-agent"; \
+    echo "RAGFlow version: $version_info"; \
+    echo $version_info > /ragflow/VERSION
+
+# production stage
+FROM base AS production
+USER root
+
+WORKDIR /ragflow
+
+# Copy Python environment
+ENV VIRTUAL_ENV=/ragflow/.venv
+COPY --from=builder ${VIRTUAL_ENV} ${VIRTUAL_ENV}
+ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
+ENV PYTHONPATH=/ragflow/
+
+# Copy application code (excluding agent and search modules)
+COPY --from=builder /ragflow/api /ragflow/api
+COPY --from=builder /ragflow/rag /ragflow/rag
+COPY --from=builder /ragflow/deepdoc /ragflow/deepdoc
+COPY --from=builder /ragflow/conf /ragflow/conf
+COPY --from=builder /ragflow/web/dist /ragflow/web/dist
+
+# Copy configuration templates
+COPY docker/service_conf.yaml.template ./conf/service_conf.yaml.template
+COPY docker/entrypoint-no-search-agent.sh ./entrypoint.sh
+RUN chmod +x ./entrypoint*.sh
+
+# Copy version info
+COPY --from=builder /ragflow/VERSION /ragflow/VERSION
+
+EXPOSE 9380
+
+ENTRYPOINT ["./entrypoint.sh"]

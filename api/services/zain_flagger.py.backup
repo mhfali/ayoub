@@ -1,0 +1,333 @@
+#
+#  Copyright 2024 The InfiniFlow Authors. All Rights Reserved.
+#
+#  Licensed under the Apache License, Version 2.0 (the "License");
+#  you may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+#
+import re
+from typing import Dict, List, Tuple
+
+from api.db.services.llm_service import LLMBundle
+from api.db import LLMType
+
+
+class ZainContentFlagger:
+    """
+    Service to detect and flag questions that are:
+    1. Unrelated to Zain telecommunications business
+    2. Cannot be answered based on the knowledge base content
+    """
+    
+    # Keywords that indicate Zain-related content
+    ZAIN_KEYWORDS = [
+        "zain", "زين", "telecommunication", "telecom", "mobile", "network",
+        "cellular", "phone", "sim", "subscriber", "billing", "tariff",
+        "roaming", "coverage", "signal", "tower", "base station", "customer service",
+        "recharge", "top up", "data plan", "voice plan", "sms", "internet",
+        "4g", "5g", "lte", "gsm", "customer", "account", "subscription",
+        "service", "support", "technical", "device", "smartphone"
+    ]
+    
+    # Keywords that indicate forbidden/unrelated content
+    FORBIDDEN_KEYWORDS = [
+        # Financial/Internal Business
+        "financial", "finance", "budget", "revenue", "profit", "loss", "accounting",
+        "payroll", "salary", "wages", "investment", "procurement", "vendor", "supplier",
+        "contract", "tender", "audit", "compliance", "internal policy", "hr policy",
+        "human resources", "employee handbook", "staff", "hiring", "recruitment",
+        "performance review", "disciplinary", "termination", "confidential",
+        
+        # Completely unrelated topics
+        "cooking", "recipe", "food", "restaurant", "weather", "sports",
+        "entertainment", "movies", "music", "gaming", "travel", "tourism",
+        "fashion", "beauty", "health", "medicine", "education", "school",
+        "university", "programming", "software development", "politics",
+        "government", "news", "celebrity", "gossip", "religion", "philosophy",
+        "real estate", "construction", "agriculture", "manufacturing"
+    ]
+    
+    def __init__(self, tenant_id: str, llm_id: str = None):
+        """
+        Initialize the flagger with LLM support and knowledge base access
+        
+        Args:
+            tenant_id: Tenant ID for LLM access
+            llm_id: Optional specific LLM ID to use
+        """
+        self.tenant_id = tenant_id
+        self.llm_id = llm_id
+        try:
+            self.llm_bundle = LLMBundle(tenant_id, LLMType.CHAT, llm_id) if llm_id else None
+        except Exception:
+            self.llm_bundle = None
+    
+    def get_kb_document_names(self, kb_ids: list) -> list:
+        """
+        Get document names from knowledge base to understand available content
+        
+        Args:
+            kb_ids: List of knowledge base IDs
+            
+        Returns:
+            List of document names
+        """
+        try:
+            from api.db.services.document_service import DocumentService
+            
+            if not kb_ids:
+                return []
+            
+            document_names = []
+            for kb_id in kb_ids:
+                # Get documents in this knowledge base
+                documents = DocumentService.query(kb_id=kb_id, status="1")
+                for doc in documents:
+                    if hasattr(doc, 'name') and doc.name:
+                        document_names.append(doc.name.lower())
+            
+            return document_names
+        except Exception:
+            return []
+    
+    def is_question_answerable_by_kb(self, question: str, kb_ids: list = None) -> Tuple[bool, str]:
+        """
+        Check if question can potentially be answered by knowledge base content
+        
+        Args:
+            question: The user's question
+            kb_ids: Knowledge base IDs to check against
+            
+        Returns:
+            Tuple of (is_answerable, reason)
+        """
+        question_lower = question.lower()
+        
+        # Get document names to understand KB content
+        document_names = self.get_kb_document_names(kb_ids or [])
+        
+        # Check if question asks for specific types of forbidden information
+        forbidden_patterns = [
+            "internal policy", "internal policies", "finance policy", "financial policy",
+            "hr policy", "human resources policy", "employee handbook", "staff handbook",
+            "budget", "financial data", "revenue", "profit", "salary", "payroll",
+            "internal procedure", "workflow", "business process", "confidential",
+            "finance department", "accounting department", "hr department"
+        ]
+        
+        for pattern in forbidden_patterns:
+            if pattern in question_lower:
+                return False, f"Question asks for internal/confidential information: '{pattern}'"
+        
+        # Check against document names to see if question could be about available content
+        if document_names:
+            # Look for telecommunications/technical documentation patterns
+            telecom_doc_patterns = [
+                "manual", "guide", "specification", "procedure", "instruction",
+                "technical", "user", "service", "network", "device", "configuration",
+                "troubleshooting", "maintenance", "installation", "setup"
+            ]
+            
+            has_relevant_docs = any(
+                any(pattern in doc_name for pattern in telecom_doc_patterns)
+                for doc_name in document_names
+            )
+            
+            if has_relevant_docs:
+                return True, "Knowledge base contains relevant technical documentation"
+            else:
+                # If no relevant docs found, might not be answerable
+                return False, "Knowledge base doesn't appear to contain relevant documentation for this question"
+        
+        # Default to potentially answerable if we can't determine KB content
+        return True, "Unable to determine knowledge base content"
+    
+    def is_zain_related_simple(self, question: str, kb_ids: list = None) -> Tuple[bool, str]:
+        """
+        Enhanced keyword-based detection for Zain-related content
+        
+        Args:
+            question: The user's question
+            kb_ids: Knowledge base IDs for context
+            
+        Returns:
+            Tuple of (is_related, reason)
+        """
+        question_lower = question.lower()
+        
+        # Check for explicitly forbidden content first
+        forbidden_matches = [keyword for keyword in self.FORBIDDEN_KEYWORDS if keyword in question_lower]
+        if forbidden_matches:
+            return False, f"Contains forbidden/unrelated keywords: {', '.join(forbidden_matches)}"
+        
+        # Check if question can be answered by KB
+        is_answerable, kb_reason = self.is_question_answerable_by_kb(question, kb_ids)
+        if not is_answerable:
+            return False, f"Cannot be answered by knowledge base: {kb_reason}"
+        
+        # Check for Zain-related keywords
+        zain_matches = [keyword for keyword in self.ZAIN_KEYWORDS if keyword in question_lower]
+        if zain_matches:
+            return True, f"Contains Zain-related keywords: {', '.join(zain_matches)}"
+        
+        # If question seems general but could be about telecom services
+        telecom_patterns = ["how to", "what is", "can i", "help me", "support", "issue", "problem", "error"]
+        if any(pattern in question_lower for pattern in telecom_patterns):
+            return True, "General support question that could be Zain-related"
+        
+        # Allow general questions if we have telecom-related documentation
+        document_names = self.get_kb_document_names(kb_ids or [])
+        if document_names:
+            telecom_doc_patterns = [
+                "manual", "guide", "specification", "procedure", "instruction",
+                "technical", "user", "service", "network", "device", "configuration",
+                "troubleshooting", "maintenance", "installation", "setup"
+            ]
+            
+            has_relevant_docs = any(
+                any(pattern in doc_name for pattern in telecom_doc_patterns)
+                for doc_name in document_names
+            )
+            
+            if has_relevant_docs:
+                return True, "Question could be answered by available technical documentation"
+        
+        # Default to allow to avoid false positives
+        return True, "No clear unrelated indicators found"
+    
+    def is_zain_related_llm(self, question: str, kb_ids: list = None) -> Tuple[bool, str]:
+        """
+        Enhanced LLM-based detection with knowledge base context
+        
+        Args:
+            question: The user's question
+            kb_ids: Knowledge base IDs for context
+            
+        Returns:
+            Tuple of (is_related, reason)
+        """
+        if not self.llm_bundle:
+            return self.is_zain_related_simple(question, kb_ids)
+        
+        try:
+            # Get document context
+            document_names = self.get_kb_document_names(kb_ids or [])
+            doc_context = ""
+            if document_names:
+                doc_context = f"\n\nAvailable knowledge base documents: {', '.join(document_names[:10])}"
+            
+            prompt = f"""You are a content moderator for Zain telecommunications company. 
+Your task is to determine if a user question should be answered or flagged.
+
+CONTEXT:
+Zain is a telecommunications company that provides mobile services, internet, customer support, technical documentation, and related services.{doc_context}
+
+FLAG QUESTIONS THAT:
+1. Ask for internal business information (financial data, budgets, internal policies, HR procedures, confidential information)
+2. Are completely unrelated to telecommunications/Zain services (cooking, entertainment, politics, etc.)
+3. Cannot be reasonably answered using Zain's customer-facing knowledge base
+
+ALLOW QUESTIONS ABOUT:
+- Zain services and products
+- Technical support and troubleshooting
+- Customer service inquiries
+- General telecommunications topics
+- How-to questions about mobile/internet services
+
+Respond with ONLY:
+- "ALLOW" if the question is appropriate and could be answered using Zain's knowledge base
+- "FLAG" followed by a brief reason if the question should be flagged
+
+Question: {question}
+
+Response:"""
+
+            response = self.llm_bundle.chat(
+                prompt,
+                [],
+                {"temperature": 0.1, "max_tokens": 150}
+            )
+            
+            response = response.strip().upper()
+            
+            if response.startswith("ALLOW"):
+                return True, "LLM determined question is appropriate for Zain services"
+            elif response.startswith("FLAG"):
+                reason = response.replace("FLAG", "").strip()
+                return False, f"LLM flagged question: {reason}"
+            else:
+                # Fallback to simple detection if LLM response is unclear
+                return self.is_zain_related_simple(question, kb_ids)
+                
+        except Exception:
+            # Fallback to simple detection if LLM fails
+            return self.is_zain_related_simple(question, kb_ids)
+    
+    def check_question(self, question: str, kb_ids: list = None, use_llm: bool = True) -> Dict:
+        """
+        Check if a question should be flagged
+        
+        Args:
+            question: The user's question
+            kb_ids: Knowledge base IDs for context
+            use_llm: Whether to use LLM for detection
+            
+        Returns:
+            Dict with detection results
+        """
+        if use_llm and self.llm_bundle:
+            is_allowed, reason = self.is_zain_related_llm(question, kb_ids)
+            method = "llm"
+        else:
+            is_allowed, reason = self.is_zain_related_simple(question, kb_ids)
+            method = "keyword"
+        
+        return {
+            "is_related": is_allowed,
+            "is_flagged": not is_allowed,
+            "reason": reason,
+            "method": method,
+            "question": question,
+            "response_message": "I can't answer this" if not is_allowed else None
+        }
+    
+    def get_flag_reason(self, question: str, kb_ids: list = None, use_llm: bool = True) -> str:
+        """
+        Get a human-readable reason why a question was flagged
+        
+        Args:
+            question: The user's question
+            kb_ids: Knowledge base IDs for context
+            use_llm: Whether to use LLM for detection
+            
+        Returns:
+            String reason for flagging, or empty string if not flagged
+        """
+        result = self.check_question(question, kb_ids, use_llm)
+        
+        if result["is_flagged"]:
+            return f"Question flagged: {result['reason']} (detected via {result['method']})"
+        
+        return ""
+
+
+def create_zain_flagger(tenant_id: str, llm_id: str = None) -> ZainContentFlagger:
+    """
+    Factory function to create a ZainContentFlagger instance
+    
+    Args:
+        tenant_id: Tenant ID
+        llm_id: Optional LLM ID
+        
+    Returns:
+        ZainContentFlagger instance
+    """
+    return ZainContentFlagger(tenant_id, llm_id)

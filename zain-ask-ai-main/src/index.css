@@ -1,0 +1,187 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Zain Kuwait Inspired Design System - Modern & Professional */
+
+@layer base {
+  :root {
+    /* Dark theme - primary colors */
+    --background: 225 15% 8%;
+    --foreground: 210 40% 98%;
+
+    /* Cards and surfaces */
+    --card: 225 15% 12%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 225 15% 12%;
+    --popover-foreground: 210 40% 98%;
+
+    /* Zain signature colors - vibrant greens and cyans */
+    --primary: 158 64% 52%;
+    --primary-foreground: 225 15% 8%;
+
+    --secondary: 225 15% 18%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 225 15% 15%;
+    --muted-foreground: 210 20% 65%;
+
+    --accent: 290 84% 60%;
+    --accent-foreground: 210 40% 98%;
+
+    /* Status colors */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+
+    --warning: 45 93% 58%;
+    --warning-foreground: 225 15% 8%;
+
+    --success: 158 64% 52%;
+    --success-foreground: 225 15% 8%;
+
+    /* Interactive elements */
+    --border: 225 15% 20%;
+    --input: 225 15% 18%;
+    --ring: 158 64% 52%;
+
+    --radius: 0.75rem;
+
+    /* Zain gradient system */
+    --gradient-primary: linear-gradient(135deg, hsl(158, 64%, 52%), hsl(180, 84%, 60%));
+    --gradient-secondary: linear-gradient(135deg, hsl(290, 84%, 60%), hsl(158, 64%, 52%));
+    --gradient-hero: linear-gradient(135deg, hsl(158, 64%, 52%) 0%, hsl(180, 84%, 60%) 50%, hsl(290, 84%, 60%) 100%);
+    --gradient-surface: linear-gradient(135deg, hsl(225, 15%, 12%) 0%, hsl(225, 15%, 15%) 100%);
+
+    /* Animations and shadows */
+    --shadow-glow: 0 0 40px hsl(158 64% 52% / 0.3);
+    --shadow-card: 0 8px 32px hsl(225 15% 0% / 0.4);
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+    --sidebar-background: 0 0% 98%;
+
+    --sidebar-foreground: 240 5.3% 26.1%;
+
+    --sidebar-primary: 240 5.9% 10%;
+
+    --sidebar-primary-foreground: 0 0% 98%;
+
+    --sidebar-accent: 240 4.8% 95.9%;
+
+    --sidebar-accent-foreground: 240 5.9% 10%;
+
+    --sidebar-border: 220 13% 91%;
+
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  /* Light theme overrides (if needed) */
+  .light {
+    --background: 210 40% 98%;
+    --foreground: 225 15% 8%;
+    --card: 0 0% 100%;
+    --card-foreground: 225 15% 8%;
+    --border: 210 20% 85%;
+    --input: 210 20% 85%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    background: hsl(var(--background));
+    background-image: radial-gradient(ellipse at top, hsl(225 15% 12% / 0.5) 0%, transparent 50%);
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+  /* Gradient text utility */
+  .gradient-text {
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .gradient-hero-text {
+    background: var(--gradient-hero);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Animated gradient backgrounds */
+  .animated-gradient {
+    background: var(--gradient-primary);
+    background-size: 200% 200%;
+    animation: gradient-shift 3s ease infinite;
+  }
+
+  .glow-effect {
+    box-shadow: var(--shadow-glow);
+  }
+
+  /* Custom button variants */
+  .btn-zain {
+    background: var(--gradient-primary);
+    color: hsl(var(--primary-foreground));
+    transition: var(--transition-smooth);
+  }
+
+  .btn-zain:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-glow);
+  }
+
+  /* Chat message styles */
+  .message-user {
+    background: var(--gradient-primary);
+    color: hsl(var(--primary-foreground));
+  }
+
+  .message-bot {
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+  }
+
+  /* Flag styles */
+  .flag-inappropriate {
+    @apply bg-destructive/10 border border-destructive/30 text-destructive;
+  }
+
+  .flag-out-of-scope {
+    @apply bg-warning/10 border border-warning/30 text-warning;
+  }
+}
+
+@keyframes gradient-shift {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+/* Highlight Markdown Styles */
+.highlight-markdown-text {
+  font-size: 16px;
+}
+
+.highlight-markdown-text li {
+  padding: 4px 0px;
+}
+
+.highlight-markdown-code {
+  padding: 3px 6px 6px;
+  margin: 0;
+  white-space: break-spaces;
+  background-color: rgba(129, 139, 152, 0.12);
+  border-radius: 4px;
+  color: var(--ant-color-text-base);
+}

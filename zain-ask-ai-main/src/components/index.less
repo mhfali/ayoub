@@ -1,0 +1,112 @@
+.markdownContentWrapper {
+  :global(section.think) {
+    padding-left: 10px;
+    color: #8b8b8b;
+    border-left: 2px solid #d5d3d3;
+    margin-bottom: 10px;
+    font-size: 12px;
+  }
+  :global(blockquote) {
+    padding-left: 10px;
+    border-left: 4px solid #ccc;
+  }
+}
+
+.referencePopoverWrapper {
+  max-width: 50vw;
+}
+
+/* Custom size configurations */
+.imageSmall {
+  width: 8vw;
+  height: 6vh;
+  object-fit: contain;
+}
+
+.imageMedium {
+  width: 12vw;
+  height: 9vh;
+  object-fit: contain;
+}
+
+.imageLarge {
+  width: 18vw;
+  height: 12vh;
+  object-fit: contain;
+}
+
+/* Custom preview sizes */
+.previewSmall {
+  max-width: 30vw;
+  max-height: 30vh;
+}
+
+.previewLarge {
+  max-width: 70vw;
+  max-height: 70vh;
+}
+
+.referenceChunkImage {
+  width: 15vw;          /* Increase thumbnail size to 15% viewport width */
+  height: 8vh;          /* Add fixed height of 8% viewport height */
+  object-fit: contain;
+  border-radius: 4px;   /* Add rounded corners */
+  border: 1px solid #e1e5e9; /* Add subtle border */
+}
+
+.referenceInnerChunkImage {
+  display: block;
+  object-fit: contain;
+  max-width: 100%;
+  max-height: 6vh;
+}
+
+.referenceImagePreview {
+  max-width: 60vw;      /* Larger preview - 60% viewport width */
+  max-height: 60vh;     /* Larger preview - 60% viewport height */
+  border-radius: 8px;   /* Rounded corners for preview */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); /* Add shadow */
+}
+.chunkText {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #333;
+}
+
+.chunkContentText {
+  .chunkText;
+  max-height: 45vh;
+  overflow-y: auto;
+}
+.documentLink {
+  padding: 0;
+}
+
+.referenceIcon {
+  padding: 0 6px;
+}
+
+.cursor {
+  display: inline-block;
+  width: 1px;
+  height: 16px;
+  background-color: black;
+  animation: blink 0.6s infinite;
+  vertical-align: text-top;
+  @keyframes blink {
+    0% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0;
+    }
+    100% {
+      opacity: 1;
+    }
+  }
+}
+
+.fileThumbnail {
+  display: inline-block;
+  max-width: 40px;
+}
